@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+events.jsonl
+.env
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.backup
+infra/terraform/terraform.tfvars
+.DS_Store

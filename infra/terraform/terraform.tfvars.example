@@ -1,0 +1,2 @@
+bucket_name  = "ride-tracking-lake-yourname-2026"   # must be globally unique
+alert_email  = "you@example.com"
