@@ -19,14 +19,14 @@ variable "alert_email" {
   type        = string
 }
 
-variable "databricks_account_id" {
-  description = "Databricks AWS account ID for cross-account role trust (leave default until you connect Databricks)"
+variable "databricks_uc_master_role_arn" {
+  description = "Unity Catalog master role that assumes our role (static value from Databricks docs)"
   type        = string
-  default     = "414351767826"
+  default     = "arn:aws:iam::414351767826:role/unity-catalog-prod-UCMasterRole-14S5ZJVKOTYTL"
 }
 
 variable "databricks_external_id" {
   description = "External ID shown in Databricks when creating a storage credential"
   type        = string
-  default     = "REPLACE_ME"
+  default     = "0000"
 }

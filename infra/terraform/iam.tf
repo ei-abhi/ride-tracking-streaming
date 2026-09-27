@@ -20,13 +20,23 @@ resource "aws_iam_user_policy" "producer" {
   policy = data.aws_iam_policy_document.producer.json
 }
 
-# --- Databricks role: read Kinesis, read/write S3 lake, publish SNS ------
+# --- Databricks role: Unity Catalog storage credential ---------------------
+# Trust policy per Databricks docs: the UC master role assumes this role using
+# the external ID shown when you create the storage credential, and the role
+# must also be able to assume itself.
+data "aws_caller_identity" "current" {}
+
+locals {
+  databricks_role_name = "${var.project}-databricks-role"
+  databricks_role_arn  = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.databricks_role_name}"
+}
+
 data "aws_iam_policy_document" "databricks_trust" {
   statement {
     actions = ["sts:AssumeRole"]
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${var.databricks_account_id}:root"]
+      identifiers = [var.databricks_uc_master_role_arn, local.databricks_role_arn]
     }
     condition {
       test     = "StringEquals"
@@ -37,20 +47,11 @@ data "aws_iam_policy_document" "databricks_trust" {
 }
 
 resource "aws_iam_role" "databricks" {
-  name               = "${var.project}-databricks-role"
+  name               = local.databricks_role_name
   assume_role_policy = data.aws_iam_policy_document.databricks_trust.json
 }
 
 data "aws_iam_policy_document" "databricks" {
-  statement {
-    actions = [
-      "kinesis:DescribeStream", "kinesis:DescribeStreamSummary", "kinesis:GetRecords",
-      "kinesis:GetShardIterator", "kinesis:ListShards", "kinesis:ListStreams",
-      "kinesis:SubscribeToShard", "kinesis:RegisterStreamConsumer",
-      "kinesis:DescribeStreamConsumer", "kinesis:ListStreamConsumers"
-    ]
-    resources = [aws_kinesis_stream.events.arn, "${aws_kinesis_stream.events.arn}/*"]
-  }
   statement {
     actions   = ["s3:ListBucket", "s3:GetBucketLocation"]
     resources = [aws_s3_bucket.lake.arn]
@@ -58,6 +59,10 @@ data "aws_iam_policy_document" "databricks" {
   statement {
     actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
     resources = ["${aws_s3_bucket.lake.arn}/*"]
+  }
+  statement {
+    actions   = ["sts:AssumeRole"]
+    resources = [local.databricks_role_arn]
   }
   statement {
     actions   = ["sns:Publish"]

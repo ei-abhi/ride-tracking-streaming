@@ -14,6 +14,10 @@ output "sns_topic_arn" {
   value = aws_sns_topic.late_trip_alerts.arn
 }
 
+output "firehose_stream_name" {
+  value = aws_kinesis_firehose_delivery_stream.to_s3.name
+}
+
 output "databricks_role_arn" {
   value = aws_iam_role.databricks.arn
 }
