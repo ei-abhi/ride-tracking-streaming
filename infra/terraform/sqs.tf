@@ -1,0 +1,17 @@
+# Standard SQS queue as the event bus. Always-free: 1M requests/month.
+resource "aws_sqs_queue" "events_dlq" {
+  name                      = "${var.project}-events-dlq"
+  message_retention_seconds = 1209600 # 14 days
+}
+
+resource "aws_sqs_queue" "events" {
+  name                       = "${var.project}-events"
+  visibility_timeout_seconds = 120 # must exceed the Lambda timeout
+  message_retention_seconds  = 86400
+  receive_wait_time_seconds  = 10 # long polling: fewer empty receives
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.events_dlq.arn
+    maxReceiveCount     = 3
+  })
+}

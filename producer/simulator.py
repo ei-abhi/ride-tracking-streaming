@@ -8,16 +8,17 @@ Usage:
     python simulator.py                          # print to terminal forever
     python simulator.py --drivers 50 --interval 2
     python simulator.py --duration 30            # stop after 30 seconds
-    python simulator.py --sink kinesis --stream ride-events --region ap-south-1
+    python simulator.py --sink sqs --queue-url https://sqs.ap-south-1.amazonaws.com/123/ride-tracking-events
 
 Sinks:
     stdout   -> prints one JSON event per line (default)
     file     -> appends JSON lines to events.jsonl
-    kinesis  -> sends to AWS Kinesis Data Streams (needs boto3 + AWS creds)
+    sqs      -> sends to an AWS SQS queue in batches of 10 (needs boto3 + AWS creds)
 """
 
 import argparse
 import json
+import os
 import math
 import random
 import sys
@@ -218,21 +219,20 @@ class FileSink:
         self.f.flush()
 
 
-class KinesisSink:
-    def __init__(self, stream, region):
+class SqsSink:
+    def __init__(self, queue_url, region):
         import boto3  # only needed for this sink
-        self.client = boto3.client("kinesis", region_name=region)
-        self.stream = stream
+        self.client = boto3.client("sqs", region_name=region)
+        self.queue_url = queue_url
 
     def send(self, events):
-        # Batch up to 500 records per PutRecords call; partition by driver so a
-        # driver's events stay in order on one shard.
-        for i in range(0, len(events), 500):
-            chunk = events[i:i + 500]
-            self.client.put_records(
-                StreamName=self.stream,
-                Records=[{"Data": json.dumps(e).encode(), "PartitionKey": e["driver_id"]} for e in chunk],
-            )
+        # SQS accepts at most 10 messages per SendMessageBatch call.
+        for i in range(0, len(events), 10):
+            chunk = events[i:i + 10]
+            entries = [{"Id": str(j), "MessageBody": json.dumps(e)} for j, e in enumerate(chunk)]
+            resp = self.client.send_message_batch(QueueUrl=self.queue_url, Entries=entries)
+            if resp.get("Failed"):
+                print(f"# {len(resp['Failed'])} messages failed to send", file=sys.stderr)
 
 
 # --- realism knobs: duplicates and late events ----------------------------
@@ -255,8 +255,8 @@ def main():
     ap.add_argument("--drivers", type=int, default=20)
     ap.add_argument("--interval", type=float, default=2.0, help="seconds between ticks")
     ap.add_argument("--duration", type=float, default=0, help="stop after N seconds (0 = forever)")
-    ap.add_argument("--sink", choices=["stdout", "file", "kinesis"], default="stdout")
-    ap.add_argument("--stream", default="ride-events")
+    ap.add_argument("--sink", choices=["stdout", "file", "sqs"], default="stdout")
+    ap.add_argument("--queue-url", default=os.environ.get("SQS_QUEUE_URL"))
     ap.add_argument("--region", default="ap-south-1")
     ap.add_argument("--seed", type=int, default=None)
     args = ap.parse_args()
@@ -265,7 +265,9 @@ def main():
         random.seed(args.seed)
 
     sink = {"stdout": StdoutSink, "file": FileSink,
-            "kinesis": lambda: KinesisSink(args.stream, args.region)}[args.sink]()
+            "sqs": lambda: SqsSink(args.queue_url, args.region)}[args.sink]()
+    if args.sink == "sqs" and not args.queue_url:
+        sys.exit("--queue-url (or SQS_QUEUE_URL env var) is required for the sqs sink")
 
     drivers = []
     for i in range(args.drivers):

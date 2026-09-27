@@ -1,9 +1,13 @@
-output "kinesis_stream_name" {
-  value = aws_kinesis_stream.events.name
+output "sqs_queue_url" {
+  value = aws_sqs_queue.events.url
 }
 
-output "kinesis_stream_arn" {
-  value = aws_kinesis_stream.events.arn
+output "sqs_queue_arn" {
+  value = aws_sqs_queue.events.arn
+}
+
+output "lambda_function_name" {
+  value = aws_lambda_function.batcher.function_name
 }
 
 output "s3_bucket" {
@@ -12,10 +16,6 @@ output "s3_bucket" {
 
 output "sns_topic_arn" {
   value = aws_sns_topic.late_trip_alerts.arn
-}
-
-output "firehose_stream_name" {
-  value = aws_kinesis_firehose_delivery_stream.to_s3.name
 }
 
 output "databricks_role_arn" {

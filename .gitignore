@@ -8,3 +8,4 @@ infra/terraform/*.tfstate
 infra/terraform/*.tfstate.backup
 infra/terraform/terraform.tfvars
 .DS_Store
+infra/terraform/.build/

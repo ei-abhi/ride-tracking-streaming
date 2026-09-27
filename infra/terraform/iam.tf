@@ -9,8 +9,8 @@ resource "aws_iam_access_key" "producer" {
 
 data "aws_iam_policy_document" "producer" {
   statement {
-    actions   = ["kinesis:PutRecord", "kinesis:PutRecords", "kinesis:DescribeStream"]
-    resources = [aws_kinesis_stream.events.arn]
+    actions   = ["sqs:SendMessage", "sqs:SendMessageBatch", "sqs:GetQueueUrl"]
+    resources = [aws_sqs_queue.events.arn]
   }
 }
 
@@ -31,7 +31,25 @@ locals {
   databricks_role_arn  = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.databricks_role_name}"
 }
 
-data "aws_iam_policy_document" "databricks_trust" {
+# Step 1: create the role trusting only the UC master role (a role cannot
+# name itself as a principal before it exists).
+data "aws_iam_policy_document" "databricks_trust_initial" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "AWS"
+      identifiers = [var.databricks_uc_master_role_arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "sts:ExternalId"
+      values   = [var.databricks_external_id]
+    }
+  }
+}
+
+# Step 2: the full trust policy, including self-assume, applied after creation.
+data "aws_iam_policy_document" "databricks_trust_full" {
   statement {
     actions = ["sts:AssumeRole"]
     principals {
@@ -48,7 +66,24 @@ data "aws_iam_policy_document" "databricks_trust" {
 
 resource "aws_iam_role" "databricks" {
   name               = local.databricks_role_name
-  assume_role_policy = data.aws_iam_policy_document.databricks_trust.json
+  assume_role_policy = data.aws_iam_policy_document.databricks_trust_initial.json
+
+  lifecycle {
+    ignore_changes = [assume_role_policy] # managed by the update step below
+  }
+}
+
+resource "terraform_data" "databricks_trust_update" {
+  triggers_replace = [data.aws_iam_policy_document.databricks_trust_full.json]
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      sleep 10
+      aws iam update-assume-role-policy \
+        --role-name ${aws_iam_role.databricks.name} \
+        --policy-document '${data.aws_iam_policy_document.databricks_trust_full.json}'
+    EOT
+  }
 }
 
 data "aws_iam_policy_document" "databricks" {

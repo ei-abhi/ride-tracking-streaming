@@ -6,6 +6,9 @@ setup:
 simulate:
 	python producer/simulator.py --drivers 50 --interval 2
 
+simulate-sqs:
+	python producer/simulator.py --sink sqs --drivers 50 --interval 2
+
 simulate-file:
 	python producer/simulator.py --sink file --drivers 50 --interval 2 --duration 300
 
